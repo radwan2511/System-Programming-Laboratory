@@ -1,0 +1,9 @@
+task2c: start.o task2c.o util.o
+	ld -melf_i386 start.o task2c.o util.o -o task2c
+start.o : start.s
+	nasm -f elf start.s -o start.o -l start.lst
+util.o task2c.o : util.c task2c.c
+	gcc -m32 -Wall -ansi -c -nostdlib -fno-stack-protector util.c -o util.o
+	gcc -m32 -Wall -ansi -c -nostdlib -fno-stack-protector task2c.c -o task2c.o
+clean:
+	rm start.o task2c.o util.o task2c start.lst

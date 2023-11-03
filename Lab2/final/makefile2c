@@ -1,0 +1,8 @@
+all: task2c
+
+task2c: task2c.o
+	gcc -g -m32 -Wall -o task2c task2c.o
+task2c.o: task2c.c
+	gcc -g -m32 -ansi -Wall -c task2c.c
+clean:
+	rm task2c task2c.o
